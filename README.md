@@ -5,16 +5,11 @@
 [![GPL License][license-shield]][license-url]
 
 [![Readme in English](https://img.shields.io/badge/Readme-English-blue)](README.md)
-[![Readme in Turkish](https://img.shields.io/badge/Readme-Turkish-red)](README.tr.md)
 
-<div align="center"> 
-<a href="https://mono.net.tr/">
-  <img src="https://monobilisim.com.tr/images/mono-bilisim.svg" width="340"/>
-</a>
-
+<div align="center">
 <h2 align="center">whatsapp-ws</h2>
-<b>whatsapp-ws</b> utilizes the whatsmeow library to create WebSocket interfaces for integrating WhatsApp messaging capabilities and performing actions programmatically
-
+<b>whatsapp-ws</b> this repo is another fork from this repo https://github.com/monobilisim/whatsapp-ws
+to utilizes the whatsmeow library to create WebSocket interfaces for integrating WhatsApp messaging capabilities and performing actions programmatically
 </div>
 
 ---
@@ -25,9 +20,13 @@
 - [Introduction](#introduction)
 - [API Usage](#api-usage)
   - [/ws Endpoint](#ws-endpoint)
+  - [/send Endpoint](#send-endpoint)
+  - [/send-bulk Endpoint](#send-bulk-endpoint)
+  - [/check-user Endpoint](#check-user-endpoint)
   - [/status Endpoint](#status-endpoint)
   - [/qr Endpoint](#qr-endpoint)
   - [/upload Endpoint](#upload-endpoint)
+  - [/upload-new Endpoint](#upload-new-endpoint)
 - [Build](#build)
 - [Endpoints](#endpoints)
 - [License](#license)
@@ -59,6 +58,47 @@ The `/ws` endpoint provides a WebSocket interface for real-time interaction with
 - `args`: An array of string arguments required for the command.
 - `user_id`: An integer representing the user ID for context.
 
+### /send Endpoint
+
+The `/send` endpoint provides a WebSocket interface for real-time interaction with the WhatsApp messaging capabilities offered by whatsapp-ws. Users can connect to this endpoint and send commands in the form of JSON objects.
+
+```json
+{
+  "recipient": "string",
+  "message": "string"
+}
+```
+
+- `recipient`: phone number as recipient.
+- `message`: text message.
+
+### /send-bulk Endpoint
+
+The `/send-bulk` endpoint provides an endpoint for send message text in bulk recipient in the form of JSON objects.
+
+```json
+{
+  "recipient": ["string", "string"],
+  "message": "string"
+}
+```
+
+- `recipient`: phone number as recipient.
+- `message`: text message.
+
+### /check-user Endpoint
+
+The `/check-user` endpoint provides an endpoint for check wether the number is on whatsapp in bulk recipient in the form of JSON objects.
+
+```json
+{
+  "recipient": ["string", "string"]
+}
+```
+
+- `recipient`: phone number as recipient.
+
+
 ### /status Endpoint
 
 The `/status` endpoint allows users to check if they are logged in. It returns an HTTP 200 response if the user is logged in and authenticated.
@@ -72,6 +112,15 @@ The `/qr` endpoint serves the login QR code for WhatsApp. Users can access this 
 The `/upload` endpoint enables users to upload files to WhatsApp. It can be used with tools like `curl`. Here's an example command to upload a file:
 ```sh
 curl -X POST -F file=@filepath -F jid=PHONE_NUMBER@s.whatsapp.net -F user_id=1 http://localhost:6023/upload
+```
+
+---
+
+### /upload-new Endpoint
+
+The `/upload-new` endpoint enables users to upload multiple files to WhatsApp and multiple recipients. It can be used with tools like `curl`. Here's an example command to upload a file:
+```sh
+curl -X POST -F file=@filepath -F jid=PHONE_NUMBER@s.whatsapp.net -F user_id=1 http://localhost:6023/upload-new
 ```
 
 ---

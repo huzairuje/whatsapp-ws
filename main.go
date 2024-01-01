@@ -165,7 +165,7 @@ func main() {
 			}
 		}
 	}()
-	cli.SetStatusMessage("MAS Hukuk Bürosu")
+	cli.SetStatusMessage("Check")
 	for {
 		select {
 		case <-c:
