@@ -75,9 +75,15 @@ func serveSendText(w http.ResponseWriter, r *http.Request) {
 		}
 		handleSendNewTextMessage(msgBody.Message, msgBody.Recipient)
 
+		respJson, err := json.Marshal(msgBody)
+		if err != nil {
+			http.Error(w, "Error decoding JSON", http.StatusBadRequest)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success send!"))
+		w.Write(respJson)
 		return
 
 	}
@@ -113,9 +119,15 @@ func serveSendTextBulk(w http.ResponseWriter, r *http.Request) {
 		}
 		handleSendNewTextMessageBulk(msgBody.Message, msgBody.Recipient)
 
+		respJson, err := json.Marshal(msgBody)
+		if err != nil {
+			http.Error(w, "Error decoding JSON", http.StatusBadRequest)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success send!"))
+		w.Write(respJson)
 		return
 	}
 	w.WriteHeader(http.StatusServiceUnavailable)
