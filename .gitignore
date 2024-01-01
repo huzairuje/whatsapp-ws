@@ -12,3 +12,4 @@ index.html
 credentials.env
 .idea/
 *.webp
+bin/*
