@@ -283,42 +283,55 @@ func newUploadHandler(w http.ResponseWriter, r *http.Request, uploadDir string) 
 		return
 	}
 
-	file, handler, err := r.FormFile("file")
-	if err != nil {
-		handleError(w, http.StatusBadRequest, "Failed to retrieve file from request", err)
+	// Get the files
+	files, ok := r.MultipartForm.File["file"]
+	if !ok || len(files) == 0 {
+		handleError(w, http.StatusBadRequest, "No files found in the request", nil)
 		return
 	}
-	defer file.Close()
 
 	JID := r.FormValue("jid")
 	captionMsg := r.FormValue("caption")
-	data, err := io.ReadAll(file)
-	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to read file data", err)
-		return
-	}
-
-	sliceJID, err := validateStringArrayAsStringArray(JID)
-	if err != nil {
-		handleError(w, http.StatusInternalServerError, "something went wrong with parameter jid", err)
-		return
-	}
 
 	var resp []Message
-	mimeType := http.DetectContentType(data)
-	extAsImage := []string{"image/jpeg", "image/png"}
-	if stringContains(extAsImage, mimeType) {
-		resp, err = newHandleSendImage(sliceJID, data, captionMsg)
+
+	for _, handler := range files {
+		// Open the file
+		file, err := handler.Open()
 		if err != nil {
-			handleError(w, http.StatusInternalServerError, "Failed to handle image upload", err)
+			handleError(w, http.StatusInternalServerError, "Failed to open file", err)
 			return
 		}
-	} else {
-		resp, err = newHandleSendDocument(sliceJID, handler.Filename, data, captionMsg)
+		defer file.Close()
+
+		// Read the file data
+		data, err := io.ReadAll(file)
 		if err != nil {
-			handleError(w, http.StatusInternalServerError, "Failed to handle document upload", err)
+			handleError(w, http.StatusInternalServerError, "Failed to read file data", err)
 			return
 		}
+
+		sliceJID, err := validateStringArrayAsStringArray(JID)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Something went wrong with parameter jid", err)
+			return
+		}
+
+		mimeType := http.DetectContentType(data)
+		var uploadResp []Message
+
+		if isImage(mimeType) {
+			uploadResp, err = newHandleSendImage(sliceJID, data, captionMsg)
+		} else {
+			uploadResp, err = newHandleSendDocument(sliceJID, handler.Filename, data, captionMsg)
+		}
+
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to handle file upload", err)
+			return
+		}
+
+		resp = append(resp, uploadResp...)
 	}
 
 	jsonResponse, err := json.Marshal(resp)
@@ -327,7 +340,6 @@ func newUploadHandler(w http.ResponseWriter, r *http.Request, uploadDir string) 
 		return
 	}
 
-	log.Infof("Uploaded file %s to %s, mimetype: %s", handler.Filename, JID, mimeType)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(jsonResponse)
@@ -336,6 +348,11 @@ func newUploadHandler(w http.ResponseWriter, r *http.Request, uploadDir string) 
 func handleError(w http.ResponseWriter, statusCode int, message string, err error) {
 	log.Errorf("%s: %v", message, err)
 	http.Error(w, message, statusCode)
+}
+
+func isImage(mimeType string) bool {
+	extAsImage := []string{"image/jpeg", "image/png"}
+	return stringContains(extAsImage, mimeType)
 }
 
 func stringContains(strSlice []string, str string) bool {

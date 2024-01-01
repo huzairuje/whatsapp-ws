@@ -89,9 +89,13 @@ go build -ldflags '-extldflags "-static"'
 ## Endpoints
 
 - `/ws` - websocket endpoint
-- `/status` - status endpoint
+- `/send` - send message to specific recipient
+- `/send-bulk` - send message to recipient on bulk
+- `/status` - status endpoint to which account is logged in on the service
+- `/check-user` - check is the number recipient on whatsapp or not in bulk
 - `/qr` - qr endpoint
-- `/upload` - upload endpoint
+- `/upload` - upload single image endpoint single recipient
+- `/upload-new` - upload single image endpoint bulk recipient support 1 or more recipient (nulk recipient)
 
 ---
 
