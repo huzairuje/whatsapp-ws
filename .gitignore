@@ -3,8 +3,11 @@
 *.json
 *.png
 *.jpe
+*.jpg
 *_bin
+*.pdf
 mdtest
 whatsapp-ws
 index.html
 credentials.env
+.idea/

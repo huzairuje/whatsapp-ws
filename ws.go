@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
@@ -46,6 +47,122 @@ func serveWs(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeStatus returns the current status of the client
+func serveSendText(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if cli.IsLoggedIn() {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Error reading request body", http.StatusBadRequest)
+			return
+		}
+
+		type messageBodyText struct {
+			Recipient string `json:"recipient" validate:"required"`
+			Message   string `json:"message" validate:"required"`
+		}
+
+		var msgBody messageBodyText
+		err = json.Unmarshal(body, &msgBody)
+		if err != nil {
+			http.Error(w, "Error decoding JSON", http.StatusBadRequest)
+			return
+		}
+		handleSendNewTextMessage(msgBody.Message, msgBody.Recipient)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("success send!"))
+		return
+
+	}
+	w.WriteHeader(http.StatusServiceUnavailable)
+}
+
+// ServeStatus returns the current status of the client
+func serveSendTextBulk(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if cli.IsLoggedIn() {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Error reading request body", http.StatusBadRequest)
+			return
+		}
+
+		type messageBodyText struct {
+			Recipient []string `json:"recipient" validate:"required"`
+			Message   string   `json:"message" validate:"required"`
+		}
+
+		var msgBody messageBodyText
+		err = json.Unmarshal(body, &msgBody)
+		if err != nil {
+			http.Error(w, "Error decoding JSON", http.StatusBadRequest)
+			return
+		}
+		handleSendNewTextMessageBulk(msgBody.Message, msgBody.Recipient)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("success send!"))
+		return
+	}
+	w.WriteHeader(http.StatusServiceUnavailable)
+}
+
+func serveCheckUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if cli.IsLoggedIn() {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Error reading request body", http.StatusBadRequest)
+			return
+		}
+
+		type messageBodyText struct {
+			Recipient []string `json:"recipient" validate:"required"`
+		}
+
+		var msgBody messageBodyText
+		err = json.Unmarshal(body, &msgBody)
+		if err != nil {
+			http.Error(w, "Error decoding JSON", http.StatusBadRequest)
+			return
+		}
+		response := newHandleCheckUser(msgBody.Recipient)
+
+		responseJSON, err := json.Marshal(response)
+		if err != nil {
+			http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(responseJSON)
+		return
+	}
+	w.WriteHeader(http.StatusServiceUnavailable)
+}
+
+// ServeStatus returns the current status of the client
 func serveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET")
@@ -55,9 +172,27 @@ func serveStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cli.IsLoggedIn() {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(cli.Store.ID.String()))
+
+		response := struct {
+			ID       string `json:"id"`
+			PushName string `json:"pushName"`
+			IsLogin  bool   `json:"isLogin"`
+		}{
+			ID:       cli.Store.ID.String(),
+			PushName: cli.Store.PushName,
+			IsLogin:  cli.IsLoggedIn(),
+		}
+
+		// Convert the response to JSON
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
+			return
+		}
+
+		w.Write(jsonResponse)
 		return
 	}
 	w.WriteHeader(http.StatusServiceUnavailable)
@@ -103,6 +238,8 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, uploadDir string) {
 		return
 	}
 
+	captionMsg := r.FormValue("caption")
+
 	data, err := io.ReadAll(file)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to read file data", err)
@@ -111,14 +248,15 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, uploadDir string) {
 
 	mimeType := http.DetectContentType(data)
 
-	if mimeType == "image/jpeg" {
-		err = handleSendImage(JID, userID, data)
+	extAsImage := []string{"image/jpeg", "image/png"}
+	if stringContains(extAsImage, mimeType) {
+		err = handleSendImage(JID, userID, data, captionMsg)
 		if err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to handle image upload", err)
 			return
 		}
 	} else {
-		err = handleSendDocument(JID, handler.Filename, userID, data)
+		err = handleSendDocument(JID, handler.Filename, userID, data, captionMsg)
 		if err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to handle document upload", err)
 			return
@@ -129,7 +267,82 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, uploadDir string) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func newUploadHandler(w http.ResponseWriter, r *http.Request, uploadDir string) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Failed to parse multipart form", err)
+		return
+	}
+
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Failed to retrieve file from request", err)
+		return
+	}
+	defer file.Close()
+
+	JID := r.FormValue("jid")
+	captionMsg := r.FormValue("caption")
+	data, err := io.ReadAll(file)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to read file data", err)
+		return
+	}
+
+	sliceJID, err := validateStringArrayAsStringArray(JID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "something went wrong with parameter jid", err)
+		return
+	}
+
+	var resp []Message
+	mimeType := http.DetectContentType(data)
+	extAsImage := []string{"image/jpeg", "image/png"}
+	if stringContains(extAsImage, mimeType) {
+		resp, err = newHandleSendImage(sliceJID, data, captionMsg)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to handle image upload", err)
+			return
+		}
+	} else {
+		resp, err = newHandleSendDocument(sliceJID, handler.Filename, data, captionMsg)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to handle document upload", err)
+			return
+		}
+	}
+
+	jsonResponse, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
+		return
+	}
+
+	log.Infof("Uploaded file %s to %s, mimetype: %s", handler.Filename, JID, mimeType)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonResponse)
+}
+
 func handleError(w http.ResponseWriter, statusCode int, message string, err error) {
 	log.Errorf("%s: %v", message, err)
 	http.Error(w, message, statusCode)
+}
+
+func stringContains(strSlice []string, str string) bool {
+	for _, val := range strSlice {
+		if val == str {
+			return true
+		}
+	}
+	return false
 }

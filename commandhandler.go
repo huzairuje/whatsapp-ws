@@ -3,17 +3,22 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/disintegration/imaging"
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -49,6 +54,31 @@ func handleCheckUser(args []string) {
 			wsConn.WriteJSON(item)
 		}
 	}
+}
+
+func newHandleCheckUser(args []string) (response []types.IsOnWhatsAppResponse) {
+	log.Infof("Checking users: %v", args)
+	if len(args) < 1 {
+		log.Errorf("Usage: checkuser <phone numbers...>")
+		return nil
+	}
+
+	resp, err := cli.IsOnWhatsApp(args)
+	if err != nil {
+		log.Errorf("Failed to check if users are on WhatsApp: %v", err)
+		return nil
+	}
+
+	for _, item := range resp {
+		logMessage := fmt.Sprintf("%s: on WhatsApp: %t, JID: %s", item.Query, item.IsIn, item.JID)
+
+		if item.VerifiedName != nil {
+			logMessage += fmt.Sprintf(", business name: %s", item.VerifiedName.Details.GetVerifiedName())
+		}
+		log.Infof(logMessage)
+		response = append(response, item)
+	}
+	return response
 }
 
 func handleSendTextMessage(args []string, userID int) {
@@ -89,6 +119,60 @@ func handleSendTextMessage(args []string, userID int) {
 	}
 }
 
+func handleSendNewTextMessage(textMsg string, jid string) {
+	recipient, ok := parseJID(jid)
+	if !ok {
+		return
+	}
+
+	msg := &waProto.Message{
+		Conversation: proto.String(textMsg),
+	}
+	log.Infof("Sending message to %s: %s", recipient, msg.GetConversation())
+
+	resp, err := cli.SendMessage(context.Background(), recipient, msg)
+	if err != nil {
+		log.Errorf("Error sending message: %v", err)
+		return
+	}
+
+	log.Infof("Message sent (server timestamp: %s)", resp.Timestamp)
+
+	if wsConn != nil {
+		m := Message{resp.ID, recipient.String(), "text", msg.GetConversation(), true, ""}
+		wsConn.WriteJSON(m)
+	}
+}
+
+func handleSendNewTextMessageBulk(textMsg string, jids []string) {
+	if len(jids) > 0 {
+		for _, jid := range jids {
+			recipient, ok := parseJID(jid)
+			if !ok {
+				return
+			}
+
+			msg := &waProto.Message{
+				Conversation: proto.String(textMsg),
+			}
+			log.Infof("Sending message to %s: %s", recipient, msg.GetConversation())
+
+			resp, err := cli.SendMessage(context.Background(), recipient, msg)
+			if err != nil {
+				log.Errorf("Error sending message: %v", err)
+				return
+			}
+
+			log.Infof("Message sent (server timestamp: %s)", resp.Timestamp)
+
+			if wsConn != nil {
+				m := Message{resp.ID, recipient.String(), "text", msg.GetConversation(), true, ""}
+				wsConn.WriteJSON(m)
+			}
+		}
+	}
+}
+
 func handleMarkRead(args []string) {
 	if len(args) < 2 {
 		log.Errorf("Usage: markread <message_id> <remote_jid>")
@@ -121,7 +205,7 @@ func handleMarkRead(args []string) {
 	}
 }
 
-func handleSendImage(JID string, userID int, data []byte) error {
+func handleSendImage(JID string, userID int, data []byte, captionMsg string) error {
 	recipient, ok := parseJID(JID)
 	if !ok {
 		return fmt.Errorf("invalid JID")
@@ -132,7 +216,7 @@ func handleSendImage(JID string, userID int, data []byte) error {
 		return fmt.Errorf("failed to upload file: %v", err)
 	}
 
-	msg := createImageMessage(uploaded, &data)
+	msg := createImageMessage(uploaded, &data, captionMsg)
 	resp, err := cli.SendMessage(context.Background(), recipient, msg)
 	if err != nil {
 		return fmt.Errorf("error sending image message: %v", err)
@@ -158,7 +242,7 @@ func handleSendImage(JID string, userID int, data []byte) error {
 	return nil
 }
 
-func handleSendDocument(JID string, fileName string, userID int, data []byte) error {
+func handleSendDocument(JID string, fileName string, userID int, data []byte, captionMsg string) error {
 	recipient, ok := parseJID(JID)
 	if !ok {
 		return fmt.Errorf("invalid JID")
@@ -169,7 +253,7 @@ func handleSendDocument(JID string, fileName string, userID int, data []byte) er
 		return fmt.Errorf("failed to upload file: %v", err)
 	}
 
-	msg := createDocumentMessage(fileName, uploaded, &data)
+	msg := createDocumentMessage(fileName, uploaded, &data, captionMsg)
 	resp, err := cli.SendMessage(context.Background(), recipient, msg)
 	if err != nil {
 		return fmt.Errorf("error sending document message: %v", err)
@@ -259,21 +343,22 @@ func saveDocumentToDisk(msg *waProto.Message, data []byte, ID string) {
 	log.Infof("Saved file to %s", path)
 }
 
-func createImageMessage(uploaded whatsmeow.UploadResponse, data *[]byte) *waProto.Message {
+func createImageMessage(uploaded whatsmeow.UploadResponse, data *[]byte, captionMsg string) *waProto.Message {
 	return &waProto.Message{
 		ImageMessage: &waProto.ImageMessage{
 			Url:           proto.String(uploaded.URL),
-			DirectPath:    proto.String(uploaded.DirectPath),
-			MediaKey:      uploaded.MediaKey,
 			Mimetype:      proto.String(http.DetectContentType(*data)),
-			FileEncSha256: uploaded.FileEncSHA256,
+			Caption:       &captionMsg,
 			FileSha256:    uploaded.FileSHA256,
 			FileLength:    proto.Uint64(uint64(len(*data))),
+			MediaKey:      uploaded.MediaKey,
+			FileEncSha256: uploaded.FileEncSHA256,
+			DirectPath:    proto.String(uploaded.DirectPath),
 		},
 	}
 }
 
-func createDocumentMessage(fileName string, uploaded whatsmeow.UploadResponse, data *[]byte) *waProto.Message {
+func createDocumentMessage(fileName string, uploaded whatsmeow.UploadResponse, data *[]byte, captionMsg string) *waProto.Message {
 	return &waProto.Message{
 		DocumentMessage: &waProto.DocumentMessage{
 			FileName:      proto.String(fileName),
@@ -285,6 +370,152 @@ func createDocumentMessage(fileName string, uploaded whatsmeow.UploadResponse, d
 			FileSha256:    uploaded.FileSHA256,
 			FileLength:    proto.Uint64(uint64(len(*data))),
 			Title:         proto.String(fmt.Sprintf("%s%s", "document", filepath.Ext(uploaded.URL))),
+			Caption:       &captionMsg,
 		},
 	}
+}
+
+func validateStringArrayAsStringArray(stringInput string) ([]string, error) {
+	//validate string is containing other than number and commas
+	stringsArr := strings.Split(stringInput, ",")
+
+	if len(stringsArr) > 1 {
+		regex := regexp.MustCompile("[^0-9,]")
+		if regex.MatchString(stringInput) {
+			return nil, errors.New("your loanIds contain other than number and commas")
+		}
+	} else if len(stringsArr) == 1 {
+		regex := regexp.MustCompile("\\d+")
+		if !regex.MatchString(stringInput) {
+			return nil, errors.New("your loanIds contain other than number and commas")
+		}
+	} else if len(stringsArr) == 0 {
+		return nil, errors.New("empty loanIds")
+	}
+
+	var stringSlice []string
+
+	for _, str := range stringsArr {
+		uintVal, err := strconv.ParseUint(strings.TrimSpace(str), 10, 64)
+		if err != nil {
+			fmt.Printf("Error parsing string %s: %v\n", str, err)
+			continue
+		}
+		uintValString := strconv.FormatUint(uintVal, 10)
+		stringSlice = append(stringSlice, uintValString)
+	}
+	return stringSlice, nil
+}
+
+func newHandleSendImage(JIDS []string, data []byte, captionMsg string) ([]Message, error) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var sliceM []Message
+	var errs []error
+
+	for _, jid := range JIDS {
+		wg.Add(1)
+		go func(jid string) {
+			defer wg.Done()
+
+			recipient, ok := parseJID(jid)
+			if !ok {
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("invalid JID: %s", jid))
+				mu.Unlock()
+				return
+			}
+
+			uploaded, err := cli.Upload(context.Background(), data, whatsmeow.MediaImage)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("failed to upload file: %v", err))
+				mu.Unlock()
+				return
+			}
+
+			msg := createImageMessage(uploaded, &data, captionMsg)
+			resp, err := cli.SendMessage(context.Background(), recipient, msg)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("error sending image message: %v", err))
+				mu.Unlock()
+				return
+			}
+
+			log.Infof("Image message sent (server timestamp: %s)", resp.Timestamp)
+
+			saveImageToDisk(msg, data, resp.ID)
+
+			m := Message{resp.ID, recipient.String(), "media", "", true, ""}
+			mu.Lock()
+			sliceM = append(sliceM, m)
+			mu.Unlock()
+		}(jid)
+	}
+
+	wg.Wait()
+
+	// Handle errors if any
+	if len(errs) > 0 {
+		return nil, errs[0] // You might want to handle multiple errors differently
+	}
+
+	return sliceM, nil
+}
+
+func newHandleSendDocument(JID []string, fileName string, data []byte, captionMsg string) ([]Message, error) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var sliceM []Message
+	var errs []error
+
+	for _, jid := range JID {
+		wg.Add(1)
+		go func(jid, fileName string) {
+			defer wg.Done()
+
+			recipient, ok := parseJID(jid)
+			if !ok {
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("invalid JID: %s", jid))
+				mu.Unlock()
+				return
+			}
+
+			uploaded, err := cli.Upload(context.Background(), data, whatsmeow.MediaDocument)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("failed to upload file: %v", err))
+				mu.Unlock()
+				return
+			}
+
+			msg := createDocumentMessage(fileName, uploaded, &data, captionMsg)
+			resp, err := cli.SendMessage(context.Background(), recipient, msg)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("error sending document message: %v", err))
+				mu.Unlock()
+				return
+			}
+
+			log.Infof("Document message sent (server timestamp: %s)", resp.Timestamp)
+
+			saveDocumentToDisk(msg, data, resp.ID)
+			m := Message{resp.ID, recipient.String(), "media", "", true, fileName}
+			mu.Lock()
+			sliceM = append(sliceM, m)
+			mu.Unlock()
+		}(jid, fileName)
+	}
+
+	wg.Wait()
+
+	// Handle errors if any
+	if len(errs) > 0 {
+		return nil, errs[0] // You might want to handle multiple errors differently
+	}
+
+	return sliceM, nil
 }

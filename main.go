@@ -1,5 +1,5 @@
 // Copyright (c) 2021 Tulir Asokan
-//
+// Modified by (c) 2024 huzairuje
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -24,14 +24,13 @@ import (
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
-	"google.golang.org/protobuf/proto"
-
 	"go.mau.fi/whatsmeow"
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -79,10 +78,16 @@ func main() {
 
 	// Serve WebSocket endpoint
 	http.HandleFunc("/ws", serveWs)
+	http.HandleFunc("/send", serveSendText)
+	http.HandleFunc("/send-bulk", serveSendTextBulk)
 	http.HandleFunc("/status", serveStatus)
+	http.HandleFunc("/check-user", serveCheckUser)
 	http.HandleFunc("/qr", serveQR)
 	http.HandleFunc("/upload", func(w http.ResponseWriter, r *http.Request) {
 		uploadHandler(w, r, *dirPtr)
+	})
+	http.HandleFunc("/upload-new", func(w http.ResponseWriter, r *http.Request) {
+		newUploadHandler(w, r, *dirPtr)
 	})
 
 	go func() {
