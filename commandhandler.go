@@ -137,16 +137,15 @@ func handleSendNewTextMessage(textMsg string, jid string) {
 	}
 
 	log.Infof("Message sent (server timestamp: %s)", resp.Timestamp)
-
-	if wsConn != nil {
-		m := Message{resp.ID, recipient.String(), "text", msg.GetConversation(), true, ""}
-		wsConn.WriteJSON(m)
-	}
 }
 
 func handleSendNewTextMessageBulk(textMsg string, jids []string) {
-	if len(jids) > 0 {
-		for _, jid := range jids {
+	var wg sync.WaitGroup
+	for _, jid := range jids {
+		wg.Add(1)
+		go func(jid string) {
+			defer wg.Done()
+
 			recipient, ok := parseJID(jid)
 			if !ok {
 				return
@@ -164,13 +163,9 @@ func handleSendNewTextMessageBulk(textMsg string, jids []string) {
 			}
 
 			log.Infof("Message sent (server timestamp: %s)", resp.Timestamp)
-
-			if wsConn != nil {
-				m := Message{resp.ID, recipient.String(), "text", msg.GetConversation(), true, ""}
-				wsConn.WriteJSON(m)
-			}
-		}
+		}(jid)
 	}
+	wg.Wait()
 }
 
 func handleMarkRead(args []string) {

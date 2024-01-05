@@ -329,9 +329,8 @@ func newUploadHandler(w http.ResponseWriter, r *http.Request, uploadDir string) 
 			return
 		}
 
-		mimeType := http.DetectContentType(data)
 		var uploadResp []Message
-
+		mimeType := http.DetectContentType(data)
 		if isImage(mimeType) {
 			uploadResp, err = newHandleSendImage(sliceJID, data, captionMsg)
 		} else {

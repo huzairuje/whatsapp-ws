@@ -13,3 +13,4 @@ credentials.env
 .idea/
 *.webp
 bin/*
+*.oga
