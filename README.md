@@ -144,7 +144,7 @@ go build -ldflags '-extldflags "-static"'
 - `/check-user` - check is the number recipient on whatsapp or not in bulk
 - `/qr` - qr endpoint
 - `/upload` - upload single image endpoint single recipient
-- `/upload-new` - upload single image endpoint bulk recipient support 1 or more recipient (nulk recipient)
+- `/upload-new` - upload image (single or bulk) endpoint bulk recipient support 1 or more recipient (bulk recipient)
 
 ---
 
