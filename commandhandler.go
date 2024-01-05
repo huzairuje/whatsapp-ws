@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -370,35 +368,56 @@ func createDocumentMessage(fileName string, uploaded whatsmeow.UploadResponse, d
 	}
 }
 
-func validateStringArrayAsStringArray(stringInput string) ([]string, error) {
-	//validate string is containing other than number and commas
-	stringsArr := strings.Split(stringInput, ",")
+//save this code to remember
+//func validateStringArrayAsStringArray(stringInput string) ([]string, error) {
+//	//validate string is containing other than number and commas
+//	stringsArr := strings.Split(stringInput, ",")
+//
+//	if len(stringsArr) > 1 {
+//		regex := regexp.MustCompile("[^0-9,]")
+//		if regex.MatchString(stringInput) {
+//			return nil, errors.New("your loanIds contain other than number and commas")
+//		}
+//	} else if len(stringsArr) == 1 {
+//		regex := regexp.MustCompile("\\d+")
+//		if !regex.MatchString(stringInput) {
+//			return nil, errors.New("your loanIds contain other than number and commas")
+//		}
+//	} else if len(stringsArr) == 0 {
+//		return nil, errors.New("empty loanIds")
+//	}
+//
+//	var stringSlice []string
+//
+//	for _, str := range stringsArr {
+//		uintVal, err := strconv.ParseUint(strings.TrimSpace(str), 10, 64)
+//		if err != nil {
+//			fmt.Printf("Error parsing string %s: %v\n", str, err)
+//			continue
+//		}
+//		uintValString := strconv.FormatUint(uintVal, 10)
+//		stringSlice = append(stringSlice, uintValString)
+//	}
+//	return stringSlice, nil
+//}
 
-	if len(stringsArr) > 1 {
-		regex := regexp.MustCompile("[^0-9,]")
-		if regex.MatchString(stringInput) {
-			return nil, errors.New("your loanIds contain other than number and commas")
-		}
-	} else if len(stringsArr) == 1 {
-		regex := regexp.MustCompile("\\d+")
-		if !regex.MatchString(stringInput) {
-			return nil, errors.New("your loanIds contain other than number and commas")
-		}
-	} else if len(stringsArr) == 0 {
+func validateStringArrayAsStringArray(stringInput string) ([]string, error) {
+	// Validate if the string is empty
+	if strings.TrimSpace(stringInput) == "" {
 		return nil, errors.New("empty loanIds")
 	}
 
-	var stringSlice []string
+	// Split the string by commas
+	stringsArr := strings.Split(stringInput, ",")
 
+	// Validate and clean each substring
+	var stringSlice []string
 	for _, str := range stringsArr {
-		uintVal, err := strconv.ParseUint(strings.TrimSpace(str), 10, 64)
-		if err != nil {
-			fmt.Printf("Error parsing string %s: %v\n", str, err)
-			continue
-		}
-		uintValString := strconv.FormatUint(uintVal, 10)
-		stringSlice = append(stringSlice, uintValString)
+		trimmedStr := strings.TrimSpace(str)
+		// Append the converted value to the result slice
+		stringSlice = append(stringSlice, trimmedStr)
 	}
+
 	return stringSlice, nil
 }
 
