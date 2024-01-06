@@ -459,8 +459,6 @@ func newHandleSendImage(JIDS []string, data []byte, captionMsg string) ([]Messag
 
 			log.Infof("Image message sent (server timestamp: %s)", resp.Timestamp)
 
-			saveImageToDisk(msg, data, resp.ID)
-
 			m := Message{resp.ID, recipient.String(), "media", "", true, ""}
 			mu.Lock()
 			sliceM = append(sliceM, m)
@@ -516,7 +514,6 @@ func newHandleSendDocument(JID []string, fileName string, data []byte, captionMs
 
 			log.Infof("Document message sent (server timestamp: %s)", resp.Timestamp)
 
-			saveDocumentToDisk(msg, data, resp.ID)
 			m := Message{resp.ID, recipient.String(), "media", "", true, fileName}
 			mu.Lock()
 			sliceM = append(sliceM, m)
