@@ -10,6 +10,17 @@ import (
 	"github.com/mdp/qrterminal/v3"
 )
 
+const (
+	imageJPEG = "image/jpeg"
+	imageJPG  = "image/jpg"
+	imagePNG  = "image/png"
+	imageWEBP = "image/webp"
+	imageGIF  = "image/gif"
+	imageAVIF = "image/avif"
+	imageAPNG = "image/apng"
+	imageSVG  = "image/svg+xml"
+)
+
 // WebSocket upgrader
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -362,7 +373,16 @@ func handleError(w http.ResponseWriter, statusCode int, message string, err erro
 }
 
 func isImage(mimeType string) bool {
-	extAsImage := []string{"image/jpeg", "image/png"}
+	extAsImage := []string{
+		imageJPEG,
+		imageJPG,
+		imagePNG,
+		imageWEBP,
+		imageGIF,
+		imageAVIF,
+		imageAPNG,
+		imageSVG,
+	}
 	return stringContains(extAsImage, mimeType)
 }
 
